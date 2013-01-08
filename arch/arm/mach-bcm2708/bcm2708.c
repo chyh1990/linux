@@ -303,7 +303,7 @@ static struct platform_device bcm2708_mci_device = {
 #endif /* CONFIG_MMC_BCM2708 */
 
 static struct platform_device bcm2708_ili9325 = {
-	.name = "ili9325",
+	.name = "ili932x",
 	.id = 0,
 };
 
