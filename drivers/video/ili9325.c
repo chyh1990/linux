@@ -65,10 +65,10 @@
 #define LCD_D17 8
 #define LCD_NRST 7
 
-#define UPSIDEDOWN
+//#define UPSIDEDOWN
 
 #define LCD_DEFAULT_ID (0x9320)
-//#define LCD_RD 0
+#define LCD_RD 0
 
 struct ili932x_page {
 	unsigned short x;
@@ -253,13 +253,8 @@ static u16 ili932x_readid(void)
 
 
 static void ili932x_setptr(struct ili932x *item, int x, int y) {
-#ifdef UPSIDEDOWN
-	ili932x_writeword(0x0020, 0); ili932x_writeword(y, 1); // Horizontal GRAM Start Address
-	ili932x_writeword(0x0021, 0); ili932x_writeword((item->info->var.xres - 1)-x, 1); // Vertical GRAM Start Address
-#else
-	ili932x_writeword(0x0020, 0); ili932x_writeword((item->info->var.yres - 1)-y, 1); // Horizontal GRAM Start Address
-	ili932x_writeword(0x0021, 0); ili932x_writeword(x, 1); // Vertical GRAM Start Address
-#endif
+	ili932x_writeword(0x0020, 0); ili932x_writeword(x, 1); // Horizontal GRAM Start Address
+	ili932x_writeword(0x0021, 0); ili932x_writeword(y, 1); // Vertical GRAM Start Address
 	ili932x_writeword(0x0022, 0);
 }
 
@@ -537,17 +532,23 @@ static void __init ili9320_setup(struct ili932x *item)
   Init_data(0x0007, 0x0173);   // 262K color and display ON
 
 #if 0
-  ili932x_writeword(0x0020, 0); ili932x_writeword(0, 1); // Horizontal GRAM Start Address
-  ili932x_writeword(0x0021, 0); ili932x_writeword(0, 1); // Vertical GRAM Start Address
-  ili932x_writeword(0x0022, 0);
-  for (x=0; x<320*240; x++) ili932x_writeword(0xF800, 1);
-#endif
 
   //Clear screen
   ili932x_setptr(item, 0, 0);
-  for (x=0; x<320*240; x++) ili932x_writeword(0, 1);
+  for (x=0; x<320*240/3; x++)
+    ili932x_writeword(0x000f, 1);
+  for (; x<320*240; x++)
+    ili932x_writeword(0xffff, 1);
+  ili932x_setptr(item, 50, 10);
+  for (x=0; x<40; x++)
+    ili932x_writeword(0xf000, 1);
+#endif
   ili932x_setptr(item, 0, 0);
-  for (x=0; x<320*240; x++) ili932x_writeword(item->pages[0].buffer[x], 1);
+  for (x=0; x<320*240; x++)
+    ili932x_writeword(0x0000, 1);
+  ili932x_setptr(item, 0, 0);
+  for (x=0; x<320*240; x++)
+    ili932x_writeword(item->pages[0].buffer[x], 1);
 }
 
 //This routine will allocate the buffer for the complete framebuffer. This
@@ -563,21 +564,25 @@ static int __init ili932x_video_alloc(struct ili932x *item)
 	dev_dbg(item->dev, "%s: item=0x%p frame_size=%u\n",
 		__func__, (void *)item, frame_size);
 
+#if 0
 	item->pages_count = frame_size / PAGE_SIZE;
 	if ((item->pages_count * PAGE_SIZE) < frame_size) {
 		item->pages_count++;
 	}
+#endif
+  item->pages_count = (frame_size + PAGE_SIZE - 1) / PAGE_SIZE;
 	dev_dbg(item->dev, "%s: item=0x%p pages_count=%u\n",
 		__func__, (void *)item, item->pages_count);
 
 	item->info->fix.smem_len = item->pages_count * PAGE_SIZE;
 	item->info->fix.smem_start =
-	    (unsigned long)vmalloc(item->info->fix.smem_len);
+	    (unsigned long)vzalloc(item->info->fix.smem_len);
 	if (!item->info->fix.smem_start) {
 		dev_err(item->dev, "%s: unable to vmalloc\n", __func__);
 		return -ENOMEM;
 	}
-	memset((void *)item->info->fix.smem_start, 0, item->info->fix.smem_len);
+	//memset((void *)item->info->fix.smem_start, 0x00, item->info->fix.smem_len);
+	//memset((void *)item->info->fix.smem_start, 0xff, item->info->fix.smem_len/2);
 
 	return 0;
 }
@@ -623,7 +628,7 @@ static int __init ili932x_pages_alloc(struct ili932x *item)
 		__func__, (void *)item, pixels_per_page,
 		yoffset_per_page, xoffset_per_page);
 
-	oldbuffer = vmalloc(item->pages_count * pixels_per_page * 2);
+	oldbuffer = vzalloc(item->pages_count * PAGE_SIZE);
 	if (!oldbuffer) {
 		dev_err(item->dev, "%s: unable to kmalloc for ili932x_page oldbuffer\n",
 			__func__);
@@ -783,21 +788,29 @@ static struct fb_ops ili932x_fbops = {
 	.fb_blank	= ili932x_blank,
 };
 
+//#define LCD_LANDSCAPE 
+#ifdef LCD_LANDSCAPE
+#define LCD_FIX_X 320
+#define LCD_FIX_Y 240
+#else
+#define LCD_FIX_X 240
+#define LCD_FIX_Y 320
+#endif
 static struct fb_fix_screeninfo ili932x_fix __initdata = {
 	.id          = "ILI932x",
 	.type        = FB_TYPE_PACKED_PIXELS,
 	.visual      = FB_VISUAL_TRUECOLOR,
 	.accel       = FB_ACCEL_NONE,
-	.line_length = 320 * 2,
+	.line_length = LCD_FIX_X * 2,
 };
 
 static struct fb_var_screeninfo ili932x_var __initdata = {
-	.xres		= 320,
-	.yres		= 240,
-	.xres_virtual	= 320,
-	.yres_virtual	= 240,
-	.width		= 320,
-	.height		= 240,
+	.xres		= LCD_FIX_X,
+	.yres		= LCD_FIX_Y,
+	.xres_virtual	= LCD_FIX_X,
+	.yres_virtual	= LCD_FIX_Y,
+	.width		= LCD_FIX_X,
+	.height		= LCD_FIX_Y,
 	.bits_per_pixel	= 16,
 	.red		= {11, 5, 0},
 	.green		= {5, 6, 0},
@@ -941,13 +954,16 @@ static int ili932x_resume(struct platform_device *dev)
 static int __devexit ili932x_remove(struct platform_device *dev)
 {
 	struct ili932x *item = dev_get_drvdata(&dev->dev);
-	struct fb_info *info = item->info;
-	unregister_framebuffer(info);
-	ili932x_pages_free(item);
-	ili932x_video_free(item);
-	framebuffer_release(info);
-	kfree(item);
-	return 0;
+  if(item){
+    struct fb_info *info = item->info;
+    unregister_framebuffer(info);
+    fb_deferred_io_cleanup(info);
+    ili932x_pages_free(item);
+    ili932x_video_free(item);
+    framebuffer_release(info);
+    kfree(item);
+  }
+  return 0;
 }
 
 static struct platform_driver ili932x_driver = {
