@@ -38,7 +38,7 @@
  * Add support for ili9320 and device id read
  */
 
-#define DEBUG
+//#define DEBUG
 
 #include <linux/kernel.h>
 #include <linux/device.h>
